@@ -113,6 +113,8 @@ npx convex env set N8N_WEBHOOK_URL https://<random>.trycloudflare.com/webhook/le
 
 The quick-tunnel URL changes on every restart, so set `N8N_WEBHOOK_URL` again after one. To check the path, send an unsigned request: n8n should answer `401`.
 
+A quick tunnel publishes the whole n8n instance, including the editor login page, on a random URL. Keep it for local testing and stop it when you're done (`docker compose --profile tunnel down`). Without the tunnel, n8n is bound to `127.0.0.1` and can't be reached from other machines.
+
 > n8n Cloud also works. Import the same JSON files, set the four `LENDLOOP_*` values as n8n variables, and point `N8N_WEBHOOK_URL` at the cloud webhook. No tunnel is needed.
 
 ### 1.7 Try the flows
@@ -171,7 +173,7 @@ The quick-tunnel URL changes on every restart, so set `N8N_WEBHOOK_URL` again af
 | `loans` | toolId, borrowerId, ownerId, startDate, endDate (`YYYY-MM-DD`), status, createdAt, updatedAt | `by_tool`, `by_borrower`, `by_owner`, `by_status_endDate` |
 | `automationEvents` | loanId, type (`request_notified` / `reminder_sent`), status (`ok` / `failed`), idempotencyKey, detail?, createdAt | `by_key`, `by_loan` |
 
-Loan statuses are `pending → approved | declined | cancelled`, and `approved → returned`. Availability is derived rather than stored: a tool is on loan today if an approved loan covers today. Removing a tool is a soft delete (`removedAt`), so past loans still point at a real record.
+Loan statuses are `pending → approved | declined | cancelled`, `approved → returned`, and `approved → cancelled` when the owner or an admin removes a listing before the loan starts. Availability is derived rather than stored: a tool is on loan today if an approved loan covers today. Removing a tool is a soft delete (`removedAt`), so past loans still point at a real record.
 
 ### Code layout
 
@@ -205,7 +207,7 @@ Every rule is enforced in a Convex function. The UI only hides buttons the calle
 | `tools.list` / `tools.mine` | signed in | Owner shown by first name only |
 | `tools.create` | signed in | Owner is always the caller; text is trimmed and length-limited |
 | `tools.update` | owner | |
-| `tools.remove` | owner or admin | An owner can't remove a tool with a current or upcoming approved loan; open requests are cancelled and their borrowers notified |
+| `tools.remove` | owner or admin | An owner can't remove a tool with a current or upcoming approved loan; open requests and not-yet-started loans are cancelled, and each borrower gets a `listing_removed` notification |
 | `loans.request` | signed in | Not your own tool; start date today or later and at most 90 days ahead; at most 30 days long; no overlap with an approved loan; no duplicate pending request |
 | `loans.approve` / `decline` | tool owner | Only from `pending`; approve rechecks overlap and declines clashing pending requests |
 | `loans.cancel` | borrower | Only from `pending` |
@@ -213,7 +215,7 @@ Every rule is enforced in a Convex function. The UI only hides buttons the calle
 | `loans.myRequests` / `incoming` | signed in | Filtered to the caller on the server |
 | `loans.listAll`, `users.listForAdmin`, `users.setTrustedLender` | admin | |
 
-**Becoming admin.** `users.ensureCurrentUser` runs after sign-in and builds the user row from the verified Clerk token. The role comes from the `ADMIN_EMAILS` Convex env var, never from a client argument. Changing the variable takes effect the next time that user opens the app.
+**Becoming admin.** `users.ensureCurrentUser` runs after sign-in and builds the user row from the verified Clerk token. The role comes from the `ADMIN_EMAILS` Convex env var, never from a client argument. The role is also re-derived from `ADMIN_EMAILS` and the token's email on **every** call (`getCurrentUser` in `convex/lib/auth.ts`), so removing an email revokes admin rights immediately, even for someone calling Convex directly.
 
 ---
 
@@ -236,21 +238,30 @@ The receiver recomputes the signature over the **raw** body, compares in constan
 A mutation can't make network calls, so `loans.request` and every status change schedule `automation.sendLoanNotification` (an action) with `ctx.scheduler.runAfter(0, …)`. The action:
 
 1. Skips if `notify:<loanId>:<event>` is already recorded. A loan reaches each status at most once, so this key is unique per real event.
-2. Builds the minimal payload (below), signs it and POSTs it to n8n.
+2. Builds the minimal payload (below), signs it and POSTs it to n8n, with a 10-second timeout.
 3. On success, records `request_notified / ok`.
 4. On failure, reschedules itself with backoff (30 s, 60 s, 120 s). After the fourth attempt it records `request_notified / failed` and logs an error, so a failure shows up on the loan instead of disappearing.
 
 n8n flow: **Webhook** (raw body) → **Verify signature** → **Signature valid?** → **Compose message** → **Send notification (mock)** → 200. Otherwise → 401.
 
+Recipients: the owner for `requested` and `cancelled` (by the borrower); the borrower for `approved`, `declined`, `returned` and `listing_removed`.
+
+Delivery is at-least-once from Convex's side: if n8n sent the message but its response was lost, Convex retries. The send node therefore keeps the `idempotencyKey`s it has delivered (7 days, in the workflow's static data) and skips a repeat, so the retry doesn't reach the user twice.
+
 ### Workflow 2: Overdue reminders
 
 **Schedule (daily 08:00 UTC)** or **Manual trigger** → **Sign request** → **GET /overdue-loans** → **One item per loan** → **Send reminder (mock)** → **Sign write-back** → **POST /reminder-status**.
 
-The write-back carries `reminderKey = reminder:<loanId>:<YYYY-MM-DD>`. Convex looks the key up before inserting, so a retried or repeated run on the same day returns `{ recorded: false, duplicate: true }` and creates nothing. Tomorrow's reminder has a new key. Both HTTP nodes retry three times, 5 seconds apart.
+Idempotency works at two levels:
+
+- **Sending.** `/overdue-loans` leaves out any loan whose reminder for today is already recorded, so a second run on the same day sends nothing at all.
+- **Recording.** The write-back carries `reminderKey = reminder:<loanId>:<YYYY-MM-DD>`. Convex looks the key up before inserting, so a retried write-back returns `{ recorded: false, duplicate: true }` and creates nothing. Tomorrow's reminder has a new key.
+
+If a send fails, the workflow still writes back `status: "failed"` for that loan (stored under `<key>:failed`) and carries on with the others. The loan shows "Reminder failed", and because no `ok` record exists, the next run tries again. Both HTTP nodes retry three times, 5 seconds apart.
 
 ### Failures are visible
 
-- The n8n **Error handler** workflow (Error Trigger → log) is the error workflow for both flows. It logs the workflow name, execution ID, failing node and message.
+- The n8n **Error handler** workflow (Error Trigger → log) is the error workflow for both flows. It logs the workflow name, execution ID, failing node and message. The link is set on import (step 1.5) because n8n stores it as an instance-specific workflow ID, so it can't travel in the exported JSON. n8n only calls error workflows for published (not manual) runs.
 - Convex notification failures are stored as `failed` events after the last retry, and the loan shows "Notification failed …".
 - The latest automation event on each loan appears in the UI as "Reminder sent 2 days ago" or "Notification sent just now".
 
@@ -262,7 +273,7 @@ Workflows read secrets only through `$env.LENDLOOP_*`. No secret is typed into a
 
 ## 6. Security and data minimisation
 
-- **Server-side authorisation.** Every query and mutation calls `requireUser` or `requireAdmin` and the ownership helpers in `convex/lib/access.ts`. Calling Convex directly gets the same answer as using the UI.
+- **Server-side authorisation.** Every member and admin function calls `requireUser` or `requireAdmin` and the ownership helpers in `convex/lib/access.ts`. The only exceptions are `tools.listPublic`, which is public by design, and `users.me`, which returns the caller's own profile or nothing. Calling Convex directly gets the same answer as using the UI.
 - **Identity from the token, not the client.** User rows, roles and owner IDs come from the verified Clerk identity. No function accepts a user ID or role from the browser for the caller.
 - **Public projection.** `tools.listPublic` builds `{ name, category }` on the server. Owner fields never reach a signed-out browser, and a test asserts the exact shape.
 - **First names only between users.** Other members see the owner's or borrower's first name, never their email. A user without a name in Clerk shows as "Neighbour", not as part of their email address.
@@ -285,7 +296,10 @@ npm test
 - a user can't edit or remove another user's tool; an admin can remove any listing; owners can't borrow their own tools;
 - only the tool owner can approve or decline (not the borrower, a stranger or an admin); only the borrower can cancel; no double approval; no overlapping requests;
 - admin-only functions refuse regular users; the role comes from `ADMIN_EMAILS`;
-- unsigned or wrongly signed HTTP calls get 401; a repeated reminder write-back is stored once.
+- only the tool owner can mark a loan returned; removing a listing cancels its requests and notifies the borrower, not the owner;
+- removing an email from `ADMIN_EMAILS` revokes admin rights without a re-sync;
+- unsigned, wrongly signed or stale (older than 5 minutes) HTTP calls get 401;
+- an overdue loan is handed to n8n once per day, so a rerun sends nothing; a repeated reminder write-back is stored once.
 
 ---
 

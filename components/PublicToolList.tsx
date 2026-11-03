@@ -12,7 +12,7 @@ export function PublicToolList() {
 
   if (tools === undefined) return <Skeleton rows={3} columns={3} />;
   if (tools.length === 0) {
-    return <Empty icon={<Package className="h-8 w-8" />} title="No tools listed yet">Be the first to lend one.</Empty>;
+    return <Empty icon={<Package className="h-8 w-8" />} title="Nothing available right now">Every listed tool is out on loan, or none are listed yet. Sign in to lend one.</Empty>;
   }
   return (
     <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

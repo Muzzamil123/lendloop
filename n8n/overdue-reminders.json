@@ -91,7 +91,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Mock reminder channel: logs the reminder instead of sending email.\nconst days = $json.daysOverdue;\nconst text = `Hi ${$json.borrowerFirstName}, the ${$json.toolName} was due back on ${$json.endDate} ` +\n  `(${days} day${days === 1 ? '' : 's'} ago). Please return it or contact the lender.`;\nconsole.log(`[LendLoop reminder] to=${$json.borrowerEmail} text=\"${text}\"`);\nreturn { json: { reminderKey: $json.reminderKey, status: 'ok', detail: 'mock reminder logged' } };"
+        "jsCode": "// Mock reminder channel: logs the reminder instead of sending email.\n// A failed send is still written back (status \"failed\") instead of failing the\n// whole run, so the other loans' reminders are recorded and the failure is\n// visible on the loan. Convex returns the loan again on the next run.\nconst days = $json.daysOverdue;\nconst text = `Hi ${$json.borrowerFirstName}, the ${$json.toolName} was due back on ${$json.endDate} ` +\n  `(${days} day${days === 1 ? '' : 's'} ago). Please return it or contact the lender.`;\ntry {\n  console.log(`[LendLoop reminder] to=${$json.borrowerEmail} text=\"${text}\"`);\n  return { json: { reminderKey: $json.reminderKey, status: 'ok', detail: 'mock reminder logged' } };\n} catch (error) {\n  return { json: { reminderKey: $json.reminderKey, status: 'failed', detail: String(error.message).slice(0, 200) } };\n}"
       },
       "id": "9351d7d6-e6e5-4c01-8acd-456783e18a95",
       "name": "Send reminder (mock)",

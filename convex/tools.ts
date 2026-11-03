@@ -186,7 +186,7 @@ export const remove = mutation({
     for (const loan of loans) {
       if (loan.status === "pending" || (loan.status === "approved" && loan.startDate > day)) {
         await ctx.db.patch("loans", loan._id, { status: "cancelled", updatedAt: now });
-        await scheduleLoanNotification(ctx, loan._id, "cancelled");
+        await scheduleLoanNotification(ctx, loan._id, "listing_removed");
       }
     }
     await ctx.db.patch("tools", toolId, { removedAt: now });

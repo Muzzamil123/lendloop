@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Bell } from "lucide-react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { labelFor, timeAgo } from "@/lib/labels";
 
 export function Button({
@@ -20,6 +20,43 @@ export function Button({
       className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`}
       {...props}
     />
+  );
+}
+
+// A destructive button that asks for a second click before acting.
+export function ConfirmButton({
+  children,
+  confirmLabel,
+  onConfirm,
+}: {
+  children: ReactNode;
+  confirmLabel: string;
+  onConfirm: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) {
+    return (
+      <Button variant="danger" onClick={() => setAsking(true)}>
+        {children}
+      </Button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        variant="danger"
+        className="border-red-600 bg-red-600 text-white hover:bg-red-700"
+        onClick={() => {
+          setAsking(false);
+          onConfirm();
+        }}
+      >
+        {confirmLabel}
+      </Button>
+      <Button variant="ghost" onClick={() => setAsking(false)}>
+        Keep
+      </Button>
+    </span>
   );
 }
 

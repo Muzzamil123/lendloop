@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { errorMessage, labelFor } from "@/lib/labels";
-import { Button, Card, ErrorText, SectionHeading, Skeleton, Stat } from "../ui";
+import { Button, Card, ConfirmButton, ErrorText, SectionHeading, Skeleton, Stat } from "../ui";
 import { LoanList } from "./LoanList";
 import { useEnsureUser } from "../EnsureUser";
 
@@ -74,9 +74,9 @@ function AdminPanels() {
                     {labelFor(t.category)} · by {t.isMine ? "you" : t.ownerFirstName}
                   </span>
                 </p>
-                <Button variant="danger" onClick={() => report(remove({ toolId: t._id }))}>
+                <ConfirmButton confirmLabel="Remove for everyone" onConfirm={() => report(remove({ toolId: t._id }))}>
                   Remove listing
-                </Button>
+                </ConfirmButton>
               </div>
             </Card>
           ))}

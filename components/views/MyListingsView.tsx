@@ -8,7 +8,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { errorMessage, labelFor } from "@/lib/labels";
 import { CategoryIcon } from "../CategoryIcon";
 import { ToolForm, type ToolValues } from "../ToolForm";
-import { Availability, Button, Card, Empty, ErrorText, Skeleton } from "../ui";
+import { Availability, Button, Card, ConfirmButton, Empty, ErrorText, Skeleton } from "../ui";
 
 export function MyListingsView() {
   const tools = useQuery(api.tools.mine);
@@ -100,15 +100,15 @@ export function MyListingsView() {
                     <Button variant="secondary" onClick={() => setEditing(tool._id)}>
                       <Pencil className="h-4 w-4" aria-hidden /> Edit
                     </Button>
-                    <Button
-                      variant="danger"
-                      onClick={async () => {
+                    <ConfirmButton
+                      confirmLabel="Delete listing"
+                      onConfirm={async () => {
                         const message = await save(() => remove({ toolId: tool._id }));
                         setRowError(message ? { id: tool._id, message } : null);
                       }}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden /> Delete
-                    </Button>
+                    </ConfirmButton>
                   </div>
                 </div>
               )}

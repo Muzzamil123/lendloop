@@ -14,8 +14,10 @@ const eventValidator = v.union(
   v.literal("declined"),
   v.literal("cancelled"),
   v.literal("returned"),
+  v.literal("listing_removed"),
 );
-type LoanEvent = "requested" | "approved" | "declined" | "cancelled" | "returned";
+type LoanEvent = "requested" | "approved" | "declined" | "cancelled" | "returned" | "listing_removed";
+const WEBHOOK_TIMEOUT_MS = 10_000;
 
 // Called from loan mutations. Mutations can't make network calls, so the
 // webhook call runs in a scheduled action after the mutation commits.
@@ -85,7 +87,8 @@ export const notificationPayload = internalQuery({
       ctx.db.get("users", loan.borrowerId),
     ]);
     if (!tool || !owner || !borrower) return null;
-    // Requests and cancellations go to the owner; decisions go to the borrower.
+    // Requests and borrower cancellations go to the owner. Decisions, returns and
+    // a removed listing go to the borrower.
     const toOwner = event === "requested" || event === "cancelled";
     const recipient = toOwner ? owner : borrower;
     const other = toOwner ? borrower : owner;
@@ -114,6 +117,10 @@ export const sendLoanNotification = internalAction({
 
     const body = JSON.stringify({ idempotencyKey, ...payload });
     let failure: string | null = null;
+    // A hung connection counts as a failure and is retried. n8n drops a
+    // repeated idempotencyKey, so a retry after a lost response isn't re-sent.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
     try {
       const response = await fetch(requireEnv("N8N_WEBHOOK_URL"), {
         method: "POST",
@@ -122,10 +129,17 @@ export const sendLoanNotification = internalAction({
           ...(await signHeaders(requireEnv("N8N_WEBHOOK_SECRET"), body)),
         },
         body,
+        signal: controller.signal,
       });
       if (!response.ok) failure = `n8n responded ${response.status}`;
     } catch (error) {
-      failure = error instanceof Error ? error.message : "network error";
+      failure = controller.signal.aborted
+        ? `no response within ${WEBHOOK_TIMEOUT_MS / 1000}s`
+        : error instanceof Error
+          ? error.message
+          : "network error";
+    } finally {
+      clearTimeout(timer);
     }
 
     if (!failure) {
@@ -161,7 +175,9 @@ export const sendLoanNotification = internalAction({
   },
 });
 
-// Approved loans whose end date has passed. Minimal fields for a reminder.
+// Approved loans whose end date has passed and that haven't had today's
+// reminder yet. Minimal fields for a reminder. Skipping recorded loans means a
+// second run on the same day sends nothing, not just records nothing.
 export const overdueLoans = internalQuery({
   args: {},
   returns: v.array(
@@ -183,6 +199,12 @@ export const overdueLoans = internalQuery({
       .take(200);
     const result = [];
     for (const loan of loans) {
+      const reminderKey = `reminder:${loan._id}:${day}`;
+      const sent = await ctx.db
+        .query("automationEvents")
+        .withIndex("by_key", (q) => q.eq("idempotencyKey", reminderKey))
+        .first();
+      if (sent) continue;
       const [tool, borrower] = await Promise.all([
         ctx.db.get("tools", loan.toolId),
         ctx.db.get("users", loan.borrowerId),
@@ -196,7 +218,7 @@ export const overdueLoans = internalQuery({
         endDate: loan.endDate,
         daysOverdue: daysBetween(loan.endDate, day),
         // One reminder per loan per day; n8n echoes this key back.
-        reminderKey: `reminder:${loan._id}:${day}`,
+        reminderKey,
       });
     }
     return result;

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { signHeaders } from "./lib/hmac";
 import { addDays, today } from "./lib/dates";
@@ -121,10 +121,38 @@ describe("admin-only functions", () => {
     ).rejects.toThrow(/Admins only/);
   });
 
+  test("removing an email from ADMIN_EMAILS revokes admin rights immediately", async () => {
+    const { admin } = await setup();
+    await admin.query(api.loans.listAll, {});
+    process.env.ADMIN_EMAILS = "";
+    // No re-sync via ensureCurrentUser: the stored role must not be trusted.
+    await expect(admin.query(api.loans.listAll, {})).rejects.toThrow(/Admins only/);
+  });
+
   test("the admin role comes from ADMIN_EMAILS, not the client", async () => {
     const { admin, stranger } = await setup();
     expect((await admin.query(api.users.me, {}))?.role).toBe("admin");
     expect((await stranger.query(api.users.me, {}))?.role).toBe("user");
+  });
+});
+
+describe("loan lifecycle", () => {
+  test("only the tool owner can mark a loan returned", async () => {
+    const { t, owner, borrower, stranger, loanId } = await setup();
+    await owner.mutation(api.loans.approve, { loanId });
+    await t.run((ctx) => ctx.db.patch("loans", loanId, { startDate: today() }));
+    await expect(borrower.mutation(api.loans.markReturned, { loanId })).rejects.toThrow();
+    await expect(stranger.mutation(api.loans.markReturned, { loanId })).rejects.toThrow();
+    await owner.mutation(api.loans.markReturned, { loanId });
+  });
+
+  test("removing a listing cancels its requests and notifies the borrower, not the owner", async () => {
+    const { t, owner, toolId, loanId } = await setup();
+    await owner.mutation(api.tools.remove, { toolId });
+    const loan = await t.run((ctx) => ctx.db.get("loans", loanId));
+    expect(loan?.status).toBe("cancelled");
+    const payload = await t.query(internal.automation.notificationPayload, { loanId, event: "listing_removed" });
+    expect(payload?.recipient.email).toBe("borrower@example.com");
   });
 });
 
@@ -134,6 +162,35 @@ describe("n8n HTTP endpoints", () => {
     expect((await t.fetch("/overdue-loans", { method: "GET" })).status).toBe(401);
     const forged = await signHeaders("wrong-secret", "");
     expect((await t.fetch("/overdue-loans", { method: "GET", headers: forged })).status).toBe(401);
+  });
+
+  test("signatures older than five minutes are rejected (replay protection)", async () => {
+    const { t } = await setup();
+    const now = Date.now();
+    const spy = vi.spyOn(Date, "now").mockReturnValue(now - 10 * 60 * 1000);
+    const stale = await signHeaders(HTTP_SECRET, "");
+    spy.mockRestore();
+    expect((await t.fetch("/overdue-loans", { method: "GET", headers: stale })).status).toBe(401);
+    const fresh = await signHeaders(HTTP_SECRET, "");
+    expect((await t.fetch("/overdue-loans", { method: "GET", headers: fresh })).status).toBe(200);
+  });
+
+  test("an overdue loan is handed to n8n once per day, so a rerun sends no second reminder", async () => {
+    const { t, owner, loanId } = await setup();
+    await owner.mutation(api.loans.approve, { loanId });
+    await t.run((ctx) =>
+      ctx.db.patch("loans", loanId, { startDate: addDays(today(), -5), endDate: addDays(today(), -2) }),
+    );
+    const due = await t.query(internal.automation.overdueLoans, {});
+    expect(due).toHaveLength(1);
+    expect(due[0]).not.toHaveProperty("borrowerId");
+    await t.mutation(internal.automation.recordEvent, {
+      loanId,
+      type: "reminder_sent",
+      status: "ok",
+      idempotencyKey: due[0].reminderKey,
+    });
+    expect(await t.query(internal.automation.overdueLoans, {})).toHaveLength(0);
   });
 
   test("a reminder write-back is recorded once, however often it's retried", async () => {

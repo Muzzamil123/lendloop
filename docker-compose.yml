@@ -8,10 +8,12 @@
 #                                            docker compose logs tunnel)
 services:
   n8n:
-    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
+    # Pinned so a fresh setup runs the version the workflows were tested on.
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-2.46.4}
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      # Local machine only; public access goes through the tunnel when needed.
+      - "127.0.0.1:5678:5678"
     env_file:
       - .env.n8n
     environment:
@@ -29,7 +31,7 @@ services:
       - n8n_data:/home/node/.n8n
 
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7
     profiles: ["tunnel"]
     restart: unless-stopped
     command: tunnel --no-autoupdate --url http://n8n:5678

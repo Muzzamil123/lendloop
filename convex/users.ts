@@ -1,18 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getCurrentUser, requireAdmin } from "./lib/auth";
+import { adminEmails, getCurrentUser, requireAdmin } from "./lib/auth";
 import { roleValidator } from "./lib/constants";
-
-// ADMIN_EMAILS is a comma-separated Convex env var. The role always comes from
-// the server; a client can never choose its own role.
-function adminEmails(): Set<string> {
-  return new Set(
-    (process.env.ADMIN_EMAILS ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
 
 // Called once after sign-in. Creates or refreshes the caller's users row from
 // the verified Clerk token, never from client-supplied arguments.
