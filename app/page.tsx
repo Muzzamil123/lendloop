@@ -4,6 +4,7 @@ import Link from "next/link";
 import { EnsureUser } from "@/components/EnsureUser";
 import { Logo } from "@/components/Logo";
 import { PublicToolList } from "@/components/PublicToolList";
+import { SiteFooter } from "@/components/SiteFooter";
 
 const STEPS = [
   { icon: HandHelping, title: "List what you own", text: "Add tools you're happy to lend to neighbours." },
@@ -16,8 +17,20 @@ export default function Home() {
     <div className="flex min-h-full flex-col">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5">
         <Logo />
+        <Show when="signed-out">
+          <SignInButton mode="modal">
+            <button className="rounded-lg px-3.5 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100">
+              Sign in
+            </button>
+          </SignInButton>
+        </Show>
         <Show when="signed-in">
-          <UserButton />
+          <div className="flex items-center gap-3">
+            <Link href="/tools" className="rounded-lg px-3.5 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100">
+              Open app
+            </Link>
+            <UserButton />
+          </div>
         </Show>
       </header>
 
@@ -74,9 +87,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-stone-200 py-6 text-center text-sm text-stone-400">
-        LendLoop · a demo project
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

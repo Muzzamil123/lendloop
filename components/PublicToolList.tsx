@@ -5,12 +5,12 @@ import { Package } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { labelFor } from "@/lib/labels";
 import { CategoryIcon } from "./CategoryIcon";
-import { Empty } from "./ui";
+import { Empty, Skeleton } from "./ui";
 
 export function PublicToolList() {
   const tools = useQuery(api.tools.listPublic);
 
-  if (tools === undefined) return <p className="text-stone-500">Loading tools…</p>;
+  if (tools === undefined) return <Skeleton rows={3} columns={3} />;
   if (tools.length === 0) {
     return <Empty icon={<Package className="h-8 w-8" />} title="No tools listed yet">Be the first to lend one.</Empty>;
   }

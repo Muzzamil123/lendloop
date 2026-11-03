@@ -41,6 +41,47 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   );
 }
 
+export function Skeleton({ rows = 2, columns = 1 }: { rows?: number; columns?: 1 | 2 | 3 }) {
+  const grid = { 1: "", 2: "sm:grid-cols-2", 3: "sm:grid-cols-2 lg:grid-cols-3" }[columns];
+  return (
+    <div className={`grid gap-3 ${grid}`} aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex animate-pulse gap-4 rounded-2xl border border-stone-200 bg-white p-5">
+          <div className="h-11 w-11 shrink-0 rounded-xl bg-stone-100" />
+          <div className="flex-1 space-y-2 py-1">
+            <div className="h-3.5 w-1/3 rounded bg-stone-100" />
+            <div className="h-3 w-2/3 rounded bg-stone-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SectionHeading({ title, count }: { title: string; count?: number }) {
+  return (
+    <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+      {title}
+      {count !== undefined && (
+        <span className="rounded-full bg-stone-200 px-2 py-0.5 text-xs font-medium normal-case tracking-normal text-stone-600">
+          {count}
+        </span>
+      )}
+    </h2>
+  );
+}
+
+export function Stat({ label, value, tone = "default" }: { label: string; value: number | undefined; tone?: "default" | "warn" }) {
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${tone === "warn" && value ? "text-red-700" : "text-stone-900"}`}>
+        {value ?? "–"}
+      </p>
+    </div>
+  );
+}
+
 export function ErrorText({ message }: { message: string | null }) {
   if (!message) return null;
   return (

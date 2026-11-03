@@ -15,9 +15,13 @@ export function IncomingView() {
   const decline = useMutation(api.loans.decline);
   const markReturned = useMutation(api.loans.markReturned);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Id<"loans"> | null>(null);
 
   function run(action: (args: { loanId: Id<"loans"> }) => Promise<null>, loanId: Id<"loans">) {
-    action({ loanId }).then(() => setError(null), (e) => setError(errorMessage(e)));
+    setBusy(loanId);
+    action({ loanId })
+      .then(() => setError(null), (e) => setError(errorMessage(e)))
+      .finally(() => setBusy(null));
   }
 
   return (
@@ -31,16 +35,16 @@ export function IncomingView() {
           <>
             {l.status === "pending" && (
               <>
-                <Button onClick={() => run(approve, l._id)}>
+                <Button disabled={busy === l._id} onClick={() => run(approve, l._id)}>
                   <Check className="h-4 w-4" aria-hidden /> Approve
                 </Button>
-                <Button variant="secondary" onClick={() => run(decline, l._id)}>
+                <Button variant="secondary" disabled={busy === l._id} onClick={() => run(decline, l._id)}>
                   <X className="h-4 w-4" aria-hidden /> Decline
                 </Button>
               </>
             )}
             {l.status === "approved" && l.startDate <= todayUtc() && (
-              <Button variant="secondary" onClick={() => run(markReturned, l._id)}>
+              <Button variant="secondary" disabled={busy === l._id} onClick={() => run(markReturned, l._id)}>
                 <Undo2 className="h-4 w-4" aria-hidden /> Mark returned
               </Button>
             )}

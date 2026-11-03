@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { errorMessage, labelFor } from "@/lib/labels";
-import { Button, Card, ErrorText } from "../ui";
+import { Button, Card, ErrorText, SectionHeading, Skeleton, Stat } from "../ui";
 import { LoanList } from "./LoanList";
 import { useEnsureUser } from "../EnsureUser";
 
@@ -26,8 +26,16 @@ function AdminPanels() {
   return (
     <div className="grid gap-10">
       <ErrorText message={error} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Members" value={users?.length} />
+        <Stat label="Listings" value={tools?.length} />
+        <Stat label="Open loans" value={loans?.filter((l) => l.status === "pending" || l.status === "approved").length} />
+        <Stat label="Overdue" value={loans?.filter((l) => l.overdue).length} tone="warn" />
+      </div>
+
       <section>
-        <h2 className="mb-3 font-medium">Lenders</h2>
+        <SectionHeading title="Members" count={users?.length} />
+        {users === undefined && <Skeleton rows={2} />}
         <div className="grid gap-2">
           {users?.map((u) => (
             <Card key={u._id}>
@@ -54,7 +62,8 @@ function AdminPanels() {
       </section>
 
       <section>
-        <h2 className="mb-3 font-medium">All listings</h2>
+        <SectionHeading title="All listings" count={tools?.length} />
+        {tools === undefined && <Skeleton rows={2} />}
         <div className="grid gap-2">
           {tools?.map((t) => (
             <Card key={t._id}>
@@ -75,7 +84,7 @@ function AdminPanels() {
       </section>
 
       <section>
-        <h2 className="mb-3 font-medium">All loans</h2>
+        <SectionHeading title="All loans" count={loans?.length} />
         <LoanList
           loans={loans}
           empty="No loans yet."

@@ -8,7 +8,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { errorMessage, labelFor } from "@/lib/labels";
 import { CategoryIcon } from "../CategoryIcon";
 import { ToolForm, type ToolValues } from "../ToolForm";
-import { Availability, Button, Card, Empty, ErrorText } from "../ui";
+import { Availability, Button, Card, Empty, ErrorText, Skeleton } from "../ui";
 
 export function MyListingsView() {
   const tools = useQuery(api.tools.mine);
@@ -52,7 +52,7 @@ export function MyListingsView() {
       )}
 
       {tools === undefined ? (
-        <p className="text-stone-500">Loading…</p>
+        <Skeleton rows={2} />
       ) : tools.length === 0 ? (
         <Empty icon={<Package className="h-8 w-8" />} title="You haven't listed any tools yet">
           List something you&apos;re happy to lend.

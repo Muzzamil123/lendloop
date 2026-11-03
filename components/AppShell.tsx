@@ -1,18 +1,55 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import { useQuery } from "convex/react";
+import { Inbox, Package, Send, ShieldCheck, Wrench, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { api } from "@/convex/_generated/api";
 import { useEnsureUser } from "./EnsureUser";
 import { Logo } from "./Logo";
+import { SiteFooter } from "./SiteFooter";
+import { Skeleton } from "./ui";
 
-const LINKS = [
-  { href: "/tools", label: "All tools" },
-  { href: "/my-listings", label: "My listings" },
-  { href: "/my-requests", label: "My requests" },
-  { href: "/incoming", label: "Incoming" },
+type NavLink = { href: string; label: string; icon: LucideIcon };
+
+const LINKS: NavLink[] = [
+  { href: "/tools", label: "All tools", icon: Wrench },
+  { href: "/my-listings", label: "My listings", icon: Package },
+  { href: "/my-requests", label: "My requests", icon: Send },
+  { href: "/incoming", label: "Incoming", icon: Inbox },
 ];
+const ADMIN_LINK: NavLink = { href: "/admin", label: "Admin", icon: ShieldCheck };
+
+function NavLinks({ links, pending }: { links: NavLink[]; pending: number }) {
+  const pathname = usePathname();
+  return (
+    <>
+      {links.map(({ href, label, icon: Icon }) => {
+        const active = pathname.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              active ? "bg-teal-50 text-teal-800" : "text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+            }`}
+          >
+            <Icon className="h-4 w-4" aria-hidden />
+            {label}
+            {href === "/incoming" && pending > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white" aria-label={`${pending} pending`}>
+                {pending}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
 
 export function AppShell({
   title,
@@ -23,34 +60,23 @@ export function AppShell({
   subtitle?: string;
   children: ReactNode;
 }) {
-  const pathname = usePathname();
   const { me, error } = useEnsureUser();
-  const links = me?.role === "admin" ? [...LINKS, { href: "/admin", label: "Admin" }] : LINKS;
+  const incoming = useQuery(api.loans.incoming, me ? {} : "skip");
+  const pending = incoming?.filter((l) => l.status === "pending").length ?? 0;
+  const links = me?.role === "admin" ? [...LINKS, ADMIN_LINK] : LINKS;
 
   return (
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
           <Logo />
+          <nav className="hidden items-center gap-1 md:flex">
+            <NavLinks links={links} pending={pending} />
+          </nav>
           <UserButton />
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 text-sm">
-          {links.map((link) => {
-            const active = pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`whitespace-nowrap border-b-2 px-3 py-2.5 font-medium ${
-                  active
-                    ? "border-teal-700 text-teal-800"
-                    : "border-transparent text-stone-500 hover:text-stone-800"
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2 md:hidden">
+          <NavLinks links={links} pending={pending} />
         </nav>
       </header>
 
@@ -64,9 +90,11 @@ export function AppShell({
         ) : me ? (
           children
         ) : (
-          <p className="text-stone-500">Loading…</p>
+          <Skeleton rows={3} />
         )}
       </main>
+
+      <SiteFooter />
     </div>
   );
 }
