@@ -1,8 +1,18 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Next.js 16 renamed middleware.ts to proxy.ts. Clerk only attaches the session
-// here; every access rule is enforced in Convex functions, not in this file.
-export default clerkMiddleware();
+// Next.js 16 renamed middleware.ts to proxy.ts. This only redirects signed-out
+// visitors away from app pages; every access rule is enforced in Convex.
+const isAppRoute = createRouteMatcher([
+  "/tools(.*)",
+  "/my-listings(.*)",
+  "/my-requests(.*)",
+  "/incoming(.*)",
+  "/admin(.*)",
+]);
+
+export default clerkMiddleware(async (auth, req) => {
+  if (isAppRoute(req)) await auth.protect();
+});
 
 export const config = {
   matcher: [

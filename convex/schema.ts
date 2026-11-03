@@ -23,6 +23,8 @@ export default defineSchema({
     condition: conditionValidator,
     description: v.string(),
     createdAt: v.number(),
+    // Soft delete keeps loan history intact when a listing is removed.
+    removedAt: v.optional(v.number()),
   })
     .index("by_owner", ["ownerId"])
     .index("by_category", ["category"]),
