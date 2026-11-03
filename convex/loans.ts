@@ -9,6 +9,7 @@ import {
   getLiveTool,
   getLoan,
 } from "./lib/access";
+import { scheduleLoanNotification } from "./automation";
 import { requireAdmin, requireUser } from "./lib/auth";
 import { loanStatusValidator } from "./lib/constants";
 import {
@@ -50,6 +51,7 @@ async function setStatus(
     throw new ConvexError(`This request is already ${loan.status}.`);
   }
   await ctx.db.patch("loans", loan._id, { status: to, updatedAt: Date.now() });
+  if (to !== "pending") await scheduleLoanNotification(ctx, loan._id, to);
 }
 
 export const request = mutation({
@@ -89,7 +91,7 @@ export const request = mutation({
     if (duplicate) throw new ConvexError("You already have a pending request for those days.");
 
     const now = Date.now();
-    return await ctx.db.insert("loans", {
+    const loanId = await ctx.db.insert("loans", {
       toolId,
       borrowerId: user._id,
       ownerId: tool.ownerId,
@@ -99,6 +101,8 @@ export const request = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await scheduleLoanNotification(ctx, loanId, "requested");
+    return loanId;
   },
 });
 

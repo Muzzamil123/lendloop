@@ -27,7 +27,8 @@ export const ensureCurrentUser = mutation({
     }
 
     const email = identity.email.toLowerCase();
-    const name = identity.name ?? identity.givenName ?? email.split("@")[0];
+    // Never fall back to the email prefix: names are shown to other users.
+    const name = identity.name?.trim() || identity.givenName?.trim() || "Neighbour";
     const role = adminEmails().has(email) ? "admin" : "user";
 
     const existing = await ctx.db

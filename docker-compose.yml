@@ -1,5 +1,11 @@
-# n8n for local development. Secrets come from .env.n8n (git-ignored);
+# Local n8n for LendLoop. Secrets come from .env.n8n (git-ignored);
 # copy .env.n8n.example to .env.n8n and fill it in.
+#
+#   docker compose up -d                     n8n only (http://localhost:5678)
+#   docker compose --profile tunnel up -d    n8n + a public HTTPS tunnel so a
+#                                            Convex cloud deployment can reach
+#                                            the n8n webhook (URL in the logs:
+#                                            docker compose logs tunnel)
 services:
   n8n:
     image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-latest}
@@ -12,14 +18,23 @@ services:
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=UTC
       - TZ=UTC
-      # Workflows read the shared HMAC secrets via $env, so they are never
+      # Workflows read the shared HMAC secrets via $env, so secrets are never
       # typed into nodes or saved in exported workflow JSON.
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # Code nodes compute and verify HMAC signatures with Node's crypto.
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
     volumes:
       - n8n_data:/home/node/.n8n
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://n8n:5678
+    depends_on:
+      - n8n
 
 volumes:
   n8n_data:

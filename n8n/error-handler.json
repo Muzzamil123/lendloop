@@ -1,0 +1,46 @@
+{
+  "name": "LendLoop - Error handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "3db19cfc-1fd7-4e07-832f-a5d15b93b910",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Runs when any LendLoop workflow fails (set as their Error Workflow), so failed\n// runs are visible instead of silent. Swap the log for Slack/email in production.\nconst e = $json;\nconst failure = {\n  workflow: e.workflow?.name,\n  executionId: e.execution?.id,\n  failedNode: e.execution?.lastNodeExecuted,\n  error: e.execution?.error?.message,\n  url: e.execution?.url,\n  at: new Date().toISOString(),\n};\nconsole.error('[LendLoop automation failure]', JSON.stringify(failure));\nreturn [{ json: failure }];"
+      },
+      "id": "5b41baf5-45af-447f-8e3b-9124aea94004",
+      "name": "Log failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Log failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

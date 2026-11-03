@@ -8,10 +8,13 @@
  * @module
  */
 
+import type * as automation from "../automation.js";
+import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_dates from "../lib/dates.js";
+import type * as lib_hmac from "../lib/hmac.js";
 import type * as loans from "../loans.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
@@ -23,10 +26,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  automation: typeof automation;
+  http: typeof http;
   "lib/access": typeof lib_access;
   "lib/auth": typeof lib_auth;
   "lib/constants": typeof lib_constants;
   "lib/dates": typeof lib_dates;
+  "lib/hmac": typeof lib_hmac;
   loans: typeof loans;
   tools: typeof tools;
   users: typeof users;

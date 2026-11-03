@@ -1,0 +1,200 @@
+{
+  "name": "LendLoop - Request notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop-loan-events",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "ce206e4e-339e-42c3-b471-cbb3a56aeecc",
+      "name": "Loan event webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "b4bf561c-f1e0-4dca-abc7-dd4f8688649d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify the HMAC signature Convex sent: HMAC-SHA256(secret, `${timestamp}.${rawBody}`).\n// Rejects stale timestamps (older than 5 minutes) to block replays.\nconst crypto = require('crypto');\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst timestamp = headers['x-lendloop-timestamp'] || '';\nconst signature = String(headers['x-lendloop-signature'] || '');\nconst secret = $env.LENDLOOP_N8N_WEBHOOK_SECRET;\n\nlet raw = '';\nif (item.binary && item.binary.data) {\n  raw = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');\n}\n\nconst fresh = /^\\d+$/.test(timestamp) && Math.abs(Date.now() / 1000 - Number(timestamp)) <= 300;\nlet valid = false;\nif (secret && fresh && signature && raw) {\n  const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${raw}`).digest('hex');\n  valid = expected.length === signature.length &&\n    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));\n}\n\nreturn [{ json: { valid, payload: valid ? JSON.parse(raw) : null } }];"
+      },
+      "id": "174fbe8c-ed53-4e8b-a258-6edf12ec4261",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "07a58023-60be-4b1b-bead-640ca4ae22e4",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00a6e8c0-6b4d-492f-b9b2-c76fc78a8bfb",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build the message from the minimal payload. Only the recipient's first name and\n// email, the tool name and the dates are available here, by design.\nconst p = $json.payload;\nconst range = `${p.startDate} to ${p.endDate}`;\nconst messages = {\n  requested: `${p.otherPartyFirstName} would like to borrow your ${p.toolName} (${range}).`,\n  approved: `${p.otherPartyFirstName} approved your request for the ${p.toolName} (${range}).`,\n  declined: `${p.otherPartyFirstName} declined your request for the ${p.toolName} (${range}).`,\n  cancelled: `The request for your ${p.toolName} (${range}) was cancelled.`,\n  returned: `${p.otherPartyFirstName} marked the ${p.toolName} as returned. Thanks for borrowing!`,\n};\nreturn {\n  json: {\n    idempotencyKey: p.idempotencyKey,\n    to: p.recipient.email,\n    subject: `LendLoop: ${p.toolName}`,\n    text: `Hi ${p.recipient.firstName}, ${messages[p.event] ?? 'there is an update on your loan.'}`,\n  },\n};"
+      },
+      "id": "e51d35e3-a1e7-4fc6-b5d3-c93920219ead",
+      "name": "Compose message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Mock notification channel: logs the message instead of sending email.\n// Swap this node for an Email/Slack/Discord node in production.\nconsole.log(`[LendLoop notify] to=${$json.to} subject=\"${$json.subject}\" text=\"${$json.text}\"`);\nreturn { json: { ...$json, deliveredAt: new Date().toISOString(), channel: 'mock-log' } };"
+      },
+      "id": "c51230f3-e0f2-4a4a-8a98-2c8e65fc75ae",
+      "name": "Send notification (mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "04fef36d-6dad-4c6b-bfff-e837b1815af9",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'invalid signature' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "3b252eea-d9ab-47cd-b13c-877f6f0f0090",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Loan event webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Compose message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose message": {
+      "main": [
+        [
+          {
+            "node": "Send notification (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send notification (mock)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

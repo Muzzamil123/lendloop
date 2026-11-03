@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { scheduleLoanNotification } from "./automation";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -185,6 +186,7 @@ export const remove = mutation({
     for (const loan of loans) {
       if (loan.status === "pending" || (loan.status === "approved" && loan.startDate > day)) {
         await ctx.db.patch("loans", loan._id, { status: "cancelled", updatedAt: now });
+        await scheduleLoanNotification(ctx, loan._id, "cancelled");
       }
     }
     await ctx.db.patch("tools", toolId, { removedAt: now });
